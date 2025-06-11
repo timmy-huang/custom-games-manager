@@ -6,7 +6,6 @@
     <div class="search-section">
       <form class="search-bar" @submit="handleSearch">
         <div class="select-container">
-          <div class="selected-value">{{ selectedSubregion }}</div>
           <select 
             v-model="selectedSubregion"
             class="region-select"
@@ -17,9 +16,10 @@
               :key="subregion.value"
               :value="subregion.value"
             >
-              {{ subregion.label }}
+              {{ selectedSubregion === subregion.value ? subregion.value : subregion.label }}
             </option>
           </select>
+          <span class="dropdown-arrow">▼</span>
         </div>
         <div class="search-inputs">
           <div class="input-group">
@@ -235,30 +235,28 @@ const createLobby = () => {
   width: fit-content;
 }
 
-.selected-value {
-  position: absolute;
-  left: 0.8rem;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
 .region-select {
-  color: transparent;
-  padding: 0.8rem 2rem 0.8rem 0.8rem;
+  padding: 0.8rem 1.2rem 0.8rem 0.4rem;
   border: 2px solid #ddd;
   border-radius: 8px;
   background-color: white;
   font-size: 1rem;
   cursor: pointer;
-  min-width: 30px;
-  width: fit-content;
+  width: 4rem;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  color: #333;
 }
 
-.region-select option {
-  color: initial;
-  padding: 8px;
-  min-width: 120px;
+.dropdown-arrow {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #666;
+  font-size: 0.8rem;
 }
 
 .search-inputs {
