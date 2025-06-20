@@ -79,8 +79,26 @@
           class="player-item"
         >
           <div class="player-info">
-            <span>{{ player.gameName }}#{{ player.tagLine }}</span>
-            <span class="region-tag">{{ player.subregion }}</span>
+            <div class="player-details">
+              <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
+              <span class="region-tag">{{ player.subregion }}</span>
+            </div>
+            <div class="rank-section">
+              <div v-if="player.ranksLoading" class="rank-loading">
+                Loading ranks...
+              </div>
+              <div v-else-if="player.highestRank" class="highest-rank">
+                <span class="queue-type">{{ getQueueTypeLabel(player.highestRank.queueType) }}</span>
+                <span class="rank-tier">{{ player.highestRank.tier }} {{ player.highestRank.rank }}</span>
+                <span class="lp">{{ player.highestRank.leaguePoints }} LP</span>
+              </div>
+              <div v-else-if="player.ranksError" class="rank-error">
+                {{ player.ranksError }}
+              </div>
+              <div v-else class="no-ranks">
+                No rank data
+              </div>
+            </div>
           </div>
           <button 
             @click="removePlayer(player.puuid)" 
@@ -104,9 +122,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { RiotApiService } from '../services/riotApi';
-import { SUBREGIONS } from '../config/api.config';
+import { SUBREGIONS, REGIONAL_ENDPOINTS } from '../config/api.config';
 
 // Search form data
 const gameNameQuery = ref('');
@@ -119,34 +137,118 @@ const errorMessage = ref('');
 const addedPlayers = ref([]);
 
 // Convert SUBREGIONS object to array for v-for
-const subregionsList = Object.entries(SUBREGIONS).map(([key, value]) => ({
-  value: value.value,
-  label: value.label,
-  region: value.region
-}));
-
-// Create a map of values to labels for the select
-const valueToLabel = computed(() => {
-  const map = new Map();
-  Object.entries(SUBREGIONS).forEach(([key, value]) => {
-    map.set(value.value, value.label);
-  });
-  return map;
-});
+const subregionsList = Object.values(SUBREGIONS);
 
 // Mock suggested players with taglines
 const suggestedPlayers = ref([
   { gameName: 'Faker', tagLine: 'KR1', subregion: 'KR' },
   { gameName: 'Caps', tagLine: 'EUW', subregion: 'EUW' },
   { gameName: 'Bjergsen', tagLine: 'NA1', subregion: 'NA' },
-  { gameName: 'RNG-Wei', tagLine: 'CN1', subregion: 'KR' },
+  { gameName: 'halcyonhunter', tagLine: 'oc', subregion: 'OCE' },
   { gameName: 'Jankos', tagLine: 'EUW', subregion: 'EUW' },
   { gameName: 'CoreJJ', tagLine: 'NA1', subregion: 'NA' }
 ]);
 
-// Function to get main region from subregion
-const getMainRegion = (subregion) => {
-  return SUBREGIONS[subregion]?.region || 'americas';
+// Helper function to get queue type labels
+const getQueueTypeLabel = (queueType) => {
+  const labels = {
+    'RANKED_SOLO_5x5': 'Solo/Duo',
+    'RANKED_FLEX_SR': 'Flex',
+    'RANKED_TFT': 'TFT',
+    'RANKED_TFT_TURBO': 'TFT Turbo'
+  };
+  return labels[queueType] || queueType;
+};
+
+// Helper function to get tier priority (higher number = higher rank)
+const getTierPriority = (tier) => {
+  const priorities = {
+    'IRON': 1,
+    'BRONZE': 2,
+    'SILVER': 3,
+    'GOLD': 4,
+    'EMERALD': 5,
+    'PLATINUM': 6,
+    'DIAMOND': 7,
+    'MASTER': 8,
+    'GRANDMASTER': 9,
+    'CHALLENGER': 10
+  };
+  return priorities[tier] || 0;
+};
+
+// Helper function to get rank priority (lower number = higher rank)
+const getRankPriority = (rank) => {
+  const priorities = {
+    'IV': 1,
+    'III': 2,
+    'II': 3,
+    'I': 4
+  };
+  return priorities[rank] || 0;
+};
+
+// Helper function to determine the highest rank
+const getHighestRank = (ranks) => {
+  if (!ranks || ranks.length === 0) return null;
+  
+  let highestRank = ranks[0];
+  
+  for (const rank of ranks) {
+    const currentTierPriority = getTierPriority(rank.tier);
+    const highestTierPriority = getTierPriority(highestRank.tier);
+    
+    if (currentTierPriority > highestTierPriority) {
+      highestRank = rank;
+    } else if (currentTierPriority === highestTierPriority) {
+      const currentRankPriority = getRankPriority(rank.rank);
+      const highestRankPriority = getRankPriority(highestRank.rank);
+      
+      if (currentRankPriority > highestRankPriority) {
+        highestRank = rank;
+      }
+    }
+  }
+  
+  return highestRank;
+};
+
+// Function to fetch player ranks
+const fetchPlayerRanks = async (player) => {
+  try {
+    player.ranksLoading = true;
+    player.ranksError = null;
+    player.highestRank = null;
+    
+    const region = REGIONAL_ENDPOINTS[player.subregion] || 'na1';
+    console.log(`Fetching ranks for ${player.gameName} in region: ${region}`);
+    
+    const ranks = await RiotApiService.getPlayerRanks(player.puuid, region);
+
+    console.log('Raw ranks response:', ranks);
+    console.log('Ranks type:', typeof ranks);
+    console.log('Ranks length:', ranks ? ranks.length : 'null/undefined');
+    
+    player.ranks = ranks;
+    player.highestRank = getHighestRank(ranks);
+    console.log('Highest rank:', player.highestRank);
+    console.log('Player state after fetch:', {
+      ranksLoading: player.ranksLoading,
+      ranksError: player.ranksError,
+      highestRank: player.highestRank,
+      ranks: player.ranks
+    });
+  } catch (error) {
+    console.error('Error fetching ranks for player:', player.gameName, error);
+    player.ranksError = 'Failed to load ranks';
+  } finally {
+    player.ranksLoading = false;
+    console.log(`Final state for ${player.gameName}:`, {
+      ranksLoading: player.ranksLoading,
+      ranksError: player.ranksError,
+      highestRank: player.highestRank
+    });
+  }
 };
 
 // Function to add player
@@ -155,17 +257,25 @@ const addPlayer = async (gameName, tagLine, subregion = selectedSubregion.value)
     isLoading.value = true;
     errorMessage.value = '';
     
-    const mainRegion = getMainRegion(subregion);
-    const playerData = await RiotApiService.getAccountByRiotId(gameName, tagLine, mainRegion);
+    const playerData = await RiotApiService.getAccountByRiotId(gameName, tagLine);
     
     // Check if player is already added
     if (!addedPlayers.value.some(p => p.puuid === playerData.puuid)) {
-      addedPlayers.value.push({
+      const newPlayer = {
         puuid: playerData.puuid,
         gameName: playerData.gameName,
         tagLine: playerData.tagLine,
-        subregion: subregion
-      });
+        subregion: subregion,
+        ranks: null,
+        ranksLoading: false,
+        ranksError: null,
+        highestRank: null
+      };
+      
+      addedPlayers.value.push(newPlayer);
+      
+      // Fetch ranks for the new player
+      fetchPlayerRanks(newPlayer);
     }
     
     // Clear search fields
@@ -353,8 +463,8 @@ const createLobby = () => {
 }
 
 .player-item {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   padding: 0.8rem;
   background-color: white;
@@ -363,9 +473,19 @@ const createLobby = () => {
 }
 
 .player-info {
+  display: contents;
+}
+
+.player-details {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  justify-self: start;
+}
+
+.player-name {
+  font-weight: 500;
+  color: #333;
 }
 
 .region-tag {
@@ -377,6 +497,56 @@ const createLobby = () => {
   font-weight: 500;
 }
 
+.rank-loading {
+  color: #666;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.rank-error {
+  color: #dc3545;
+  font-size: 0.8rem;
+}
+
+.no-ranks {
+  color: #999;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.highest-rank {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.4rem;
+  background-color: #f8f9fa;
+  border-radius: 3px;
+  border: 1px solid #e9ecef;
+}
+
+.queue-type {
+  color: #666;
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.rank-tier {
+  color: #333;
+  font-weight: 600;
+}
+
+.lp {
+  color: #28a745;
+  font-weight: 500;
+}
+
+.rank-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 .remove-button {
   padding: 0.4rem 0.8rem;
   background-color: #ff4444;
@@ -384,6 +554,8 @@ const createLobby = () => {
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  white-space: nowrap;
+  justify-self: end;
 }
 
 .remove-button:hover:not(:disabled) {
