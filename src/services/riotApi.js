@@ -19,6 +19,7 @@ export class RiotApiService {
 
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 401) throw new Error('Invalid API key');
         throw new Error(errorData.status?.message || 'Failed to fetch player data');
       }
 

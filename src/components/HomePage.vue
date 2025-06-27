@@ -64,8 +64,9 @@
           @click="addPlayer(player.gameName, player.tagLine, player.subregion)"
           :disabled="isLoading"
         >
+          
           {{ player.gameName }}#{{ player.tagLine }}
-          <span class="region-tag">{{ player.subregion }}</span>
+          <span class="plus-sign">+</span>
         </button>
       </div>
     </div>
@@ -122,7 +123,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { RiotApiService } from '../services/riotApi';
 import { SUBREGIONS, REGIONAL_ENDPOINTS } from '../config/api.config';
 
@@ -167,8 +168,8 @@ const getTierPriority = (tier) => {
     'BRONZE': 2,
     'SILVER': 3,
     'GOLD': 4,
-    'EMERALD': 5,
-    'PLATINUM': 6,
+    'PLATINUM': 5,
+    'EMERALD': 6,
     'DIAMOND': 7,
     'MASTER': 8,
     'GRANDMASTER': 9,
@@ -192,33 +193,47 @@ const getRankPriority = (rank) => {
 const getHighestRank = (ranks) => {
   if (!ranks || ranks.length === 0) return null;
   
-  let highestRank = ranks[0];
+  // For arrays of size 1, return the first (and only) rank
+  if (ranks.length === 1) return ranks[0];
   
-  for (const rank of ranks) {
-    const currentTierPriority = getTierPriority(rank.tier);
-    const highestTierPriority = getTierPriority(highestRank.tier);
+  // For arrays of size 2, compare the two ranks
+  if (ranks.length === 2) {
+    const [rank1, rank2] = ranks;
+    const tier1Priority = getTierPriority(rank1.tier);
+    const tier2Priority = getTierPriority(rank2.tier);
+
+    console.log('Tier 1 priority:', tier1Priority);
+    console.log('Tier 2 priority:', tier2Priority);
     
-    if (currentTierPriority > highestTierPriority) {
-      highestRank = rank;
-    } else if (currentTierPriority === highestTierPriority) {
-      const currentRankPriority = getRankPriority(rank.rank);
-      const highestRankPriority = getRankPriority(highestRank.rank);
-      
-      if (currentRankPriority > highestRankPriority) {
-        highestRank = rank;
-      }
+    // If tiers are different, return the higher tier
+    if (tier1Priority !== tier2Priority) {
+      return tier1Priority > tier2Priority ? rank1 : rank2;
     }
+    
+    // If tiers are the same, compare ranks
+    const rank1Priority = getRankPriority(rank1.rank);
+    const rank2Priority = getRankPriority(rank2.rank);
+    
+    return rank1Priority > rank2Priority ? rank1 : rank2;
   }
   
-  return highestRank;
+  // Fallback for any other array size (shouldn't happen with max size 2)
+  return ranks[0];
 };
 
 // Function to fetch player ranks
 const fetchPlayerRanks = async (player) => {
   try {
-    player.ranksLoading = true;
-    player.ranksError = null;
-    player.highestRank = null;
+    // Trigger reactivity by reassigning the player object
+    const playerIndex = addedPlayers.value.findIndex(p => p.puuid === player.puuid);
+    if (playerIndex !== -1) {
+      addedPlayers.value[playerIndex] = {
+        ...addedPlayers.value[playerIndex],
+        ranksLoading: true,
+        ranksError: null,
+        highestRank: null
+      };
+    }
     
     const region = REGIONAL_ENDPOINTS[player.subregion] || 'na1';
     console.log(`Fetching ranks for ${player.gameName} in region: ${region}`);
@@ -229,25 +244,38 @@ const fetchPlayerRanks = async (player) => {
     console.log('Ranks type:', typeof ranks);
     console.log('Ranks length:', ranks ? ranks.length : 'null/undefined');
     
-    player.ranks = ranks;
-    player.highestRank = getHighestRank(ranks);
-    console.log('Highest rank:', player.highestRank);
+    const highestRank = getHighestRank(ranks);
+    console.log('Highest rank:', highestRank);
+    
+    // Update the player with the fetched data
+    if (playerIndex !== -1) {
+      addedPlayers.value[playerIndex] = {
+        ...addedPlayers.value[playerIndex],
+        ranks: ranks,
+        highestRank: highestRank,
+        ranksLoading: false,
+        ranksError: null
+      };
+    }
+    
     console.log('Player state after fetch:', {
-      ranksLoading: player.ranksLoading,
-      ranksError: player.ranksError,
-      highestRank: player.highestRank,
-      ranks: player.ranks
+      ranksLoading: addedPlayers.value[playerIndex]?.ranksLoading,
+      ranksError: addedPlayers.value[playerIndex]?.ranksError,
+      highestRank: addedPlayers.value[playerIndex]?.highestRank,
+      ranks: addedPlayers.value[playerIndex]?.ranks
     });
   } catch (error) {
     console.error('Error fetching ranks for player:', player.gameName, error);
-    player.ranksError = 'Failed to load ranks';
-  } finally {
-    player.ranksLoading = false;
-    console.log(`Final state for ${player.gameName}:`, {
-      ranksLoading: player.ranksLoading,
-      ranksError: player.ranksError,
-      highestRank: player.highestRank
-    });
+    
+    // Update the player with error state
+    const playerIndex = addedPlayers.value.findIndex(p => p.puuid === player.puuid);
+    if (playerIndex !== -1) {
+      addedPlayers.value[playerIndex] = {
+        ...addedPlayers.value[playerIndex],
+        ranksLoading: false,
+        ranksError: 'Failed to load ranks'
+      };
+    }
   }
 };
 
@@ -282,8 +310,9 @@ const addPlayer = async (gameName, tagLine, subregion = selectedSubregion.value)
     gameNameQuery.value = '';
     tagLineQuery.value = '';
   } catch (error) {
-    errorMessage.value = error.message === 'API key is not configured' 
-      ? 'Please configure your Riot API key in the .env file'
+    console.log('Error:', error.message);
+    errorMessage.value = error.message === 'Invalid API key' 
+      ? 'Invalid API key'
       : 'Could not find player. Please check the Game Name and Tagline.';
   } finally {
     isLoading.value = false;
@@ -430,23 +459,32 @@ const createLobby = () => {
 }
 
 .player-button {
-  padding: 0.6rem 1.2rem;
-  background-color: #7986CB;
-  color: white;
-  border: none;
-  border-radius: 20px;
+  padding: 0.5rem 0.8rem;
+  background-color: white;
+  color: #333;
+  border: 2px solid #7986CB;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 0.9rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 120px;
+  justify-content: center;
 }
 
 .player-button:hover:not(:disabled) {
-  background-color: #5C6BC0;
+  background-color: #f8f9fa;
+  border-color: #5C6BC0;
   transform: translateY(-2px);
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.plus-sign {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #7986CB;
 }
 
 .waiting-lobby {
