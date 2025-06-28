@@ -3,7 +3,7 @@
     <h1 class="title">Custom Games Manager</h1>
     <p class="subtitle">Organize your League of Legends custom games with ease</p>
 
-    <div class="search-section">
+    <div class="search-section" v-if="!isLobbyCreated">
       <form class="search-bar" @submit="handleSearch">
         <div class="select-container">
           <select 
@@ -55,7 +55,7 @@
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
     </div>
 
-    <div v-if="filteredSuggestedPlayers.length > 0" class="suggested-players">
+    <div v-if="filteredSuggestedPlayers.length > 0 && !isLobbyCreated" class="suggested-players">
       <div class="suggestions-header">
         <h3>Suggested Players</h3>
         <div v-if="isAnalyzingMatches" class="analyzing-indicator">
@@ -77,18 +77,18 @@
       </div>
     </div>
 
-    <div v-else-if="isAnalyzingMatches" class="analyzing-matches">
+    <div v-else-if="isAnalyzingMatches && !isLobbyCreated" class="analyzing-matches">
       <div class="loading-content">
         <div class="loading-spinner"></div>
         <p>Analyzing recent matches for teammate suggestions...</p>
       </div>
     </div>
 
-    <div v-else-if="addedPlayers.length > 0" class="no-suggestions">
+    <div v-else-if="addedPlayers.length > 0 && !isLobbyCreated" class="no-suggestions">
       <p>No teammates found in recent matches</p>
     </div>
 
-    <div class="waiting-lobby" :class="{ 'lobby-full': addedPlayers.length >= 10 }">
+    <div v-if="!isLobbyCreated" class="waiting-lobby" :class="{ 'lobby-full': addedPlayers.length >= 10 }">
       <h3>Waiting Lobby ({{ addedPlayers.length }}/10)</h3>
       <div class="added-players">
         <div 
@@ -130,12 +130,66 @@
     </div>
 
     <button 
+      v-if="!isLobbyCreated"
       @click="createLobby" 
       class="create-lobby-button"
       :disabled="addedPlayers.length === 0 || isLoading"
     >
       Create Lobby
     </button>
+
+    <!-- Team Display Section -->
+    <div v-if="isLobbyCreated" class="teams-section">
+      <h3>Balanced Teams</h3>
+      <div class="teams-container">
+        <div class="team team1">
+          <h4>Team 1</h4>
+          <div class="team-players">
+            <div 
+              v-for="player in team1" 
+              :key="player.puuid"
+              class="team-player"
+            >
+              <div class="player-info">
+                <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
+                <div v-if="player.highestRank" class="player-rank">
+                  {{ player.highestRank.tier }} {{ player.highestRank.rank }} ({{ player.highestRank.leaguePoints }} LP)
+                </div>
+                <div v-else class="no-rank">No rank data</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="team team2">
+          <h4>Team 2</h4>
+          <div class="team-players">
+            <div 
+              v-for="player in team2" 
+              :key="player.puuid"
+              class="team-player"
+            >
+              <div class="player-info">
+                <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
+                <div v-if="player.highestRank" class="player-rank">
+                  {{ player.highestRank.tier }} {{ player.highestRank.rank }} ({{ player.highestRank.leaguePoints }} LP)
+                </div>
+                <div v-else class="no-rank">No rank data</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="team-actions">
+        <button @click="createTeamsAgain" class="create-again-button">
+          Create Again
+        </button>
+        <button @click="startNewLobby" class="new-lobby-button">
+          New Lobby
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -157,6 +211,12 @@ const addedPlayers = ref([]);
 // Suggested players from match analysis or localStorage
 const suggestedPlayers = ref([]);
 const isAnalyzingMatches = ref(false);
+
+// Team creation state
+const teams = ref([]);
+const isLobbyCreated = ref(false);
+const team1 = ref([]);
+const team2 = ref([]);
 
 // Convert SUBREGIONS object to array for v-for
 const subregionsList = Object.values(SUBREGIONS);
@@ -434,6 +494,63 @@ const getHighestRank = (ranks) => {
   return ranks[0];
 };
 
+// Helper function to calculate rank score for team balancing
+const calculateRankScore = (rank) => {
+  if (!rank) return 0;
+  
+  const tierScore = getTierPriority(rank.tier) * 100;
+  const rankScore = getRankPriority(rank.rank) * 25;
+  const lpScore = rank.leaguePoints || 0;
+  
+  return tierScore + rankScore + lpScore;
+};
+
+// Function to create balanced teams
+const createBalancedTeams = () => {
+  // Get players with valid rank data
+  const playersWithRanks = addedPlayers.value.filter(player => player.highestRank);
+  const playersWithoutRanks = addedPlayers.value.filter(player => !player.highestRank);
+  
+  // Calculate rank scores for players with ranks
+  const playersWithScores = playersWithRanks.map(player => ({
+    ...player,
+    rankScore: calculateRankScore(player.highestRank)
+  }));
+  
+  // Sort players by rank score (highest first)
+  playersWithScores.sort((a, b) => b.rankScore - a.rankScore);
+  
+  // Initialize teams
+  const team1 = [];
+  const team2 = [];
+  let team1Score = 0;
+  let team2Score = 0;
+  
+  // Distribute players with ranks using snake draft (alternating picks)
+  for (let i = 0; i < playersWithScores.length; i++) {
+    const player = playersWithScores[i];
+    
+    if (team1Score <= team2Score) {
+      team1.push(player);
+      team1Score += player.rankScore;
+    } else {
+      team2.push(player);
+      team2Score += player.rankScore;
+    }
+  }
+  
+  // Distribute players without ranks evenly
+  for (let i = 0; i < playersWithoutRanks.length; i++) {
+    if (team1.length <= team2.length) {
+      team1.push(playersWithoutRanks[i]);
+    } else {
+      team2.push(playersWithoutRanks[i]);
+    }
+  }
+  
+  return { team1, team2, team1Score, team2Score };
+};
+
 // Function to fetch player ranks
 const fetchPlayerRanks = async (player) => {
   try {
@@ -565,7 +682,39 @@ const removePlayer = (puuid) => {
 
 const createLobby = () => {
   console.log('Creating lobby with players:', addedPlayers.value);
-  // TODO: Implement lobby creation logic
+  
+  if (addedPlayers.value.length < 2) {
+    errorMessage.value = 'Need at least 2 players to create teams';
+    return;
+  }
+  
+  // Create balanced teams
+  const { team1: newTeam1, team2: newTeam2, team1Score, team2Score } = createBalancedTeams();
+  
+  // Update state
+  team1.value = newTeam1;
+  team2.value = newTeam2;
+  isLobbyCreated.value = true;
+  
+  console.log('Teams created:', { team1: newTeam1, team2: newTeam2, team1Score, team2Score });
+};
+
+const createTeamsAgain = () => {
+  createLobby();
+};
+
+const startNewLobby = () => {
+  // Reset all state
+  addedPlayers.value = [];
+  team1.value = [];
+  team2.value = [];
+  isLobbyCreated.value = false;
+  errorMessage.value = '';
+  gameNameQuery.value = '';
+  tagLineQuery.value = '';
+  
+  // Load suggested players from localStorage
+  loadSuggestedPlayers();
 };
 
 // Load suggested players on component mount
@@ -959,5 +1108,91 @@ h3 {
   border-top: 2px solid #3498db;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+
+.teams-section {
+  margin-top: 2rem;
+  padding: 2rem;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+}
+
+.teams-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.team {
+  flex: 1;
+  padding: 1rem;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.team h4 {
+  color: #333;
+  margin-bottom: 1rem;
+}
+
+.team-players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.team-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.player-info {
+  text-align: center;
+}
+
+.player-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.player-rank {
+  color: #28a745;
+  font-size: 0.8rem;
+}
+
+.no-rank {
+  color: #999;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.team-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.create-again-button,
+.new-lobby-button {
+  padding: 0.8rem 1.5rem;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.create-again-button:hover:not(:disabled),
+.new-lobby-button:hover:not(:disabled) {
+  background-color: #1976D2;
+}
+
+.create-again-button:disabled,
+.new-lobby-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 </style> 
