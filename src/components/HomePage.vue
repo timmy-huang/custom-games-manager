@@ -158,14 +158,28 @@
             <div 
               v-for="player in team1" 
               :key="player.puuid"
-              class="team-player"
+              class="team-player-item"
             >
               <div class="player-info">
-                <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
-                <div v-if="player.highestRank" class="player-rank">
-                  {{ player.highestRank.tier }} {{ player.highestRank.rank }} ({{ player.highestRank.leaguePoints }} LP)
+                <div class="player-details">
+                  <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
                 </div>
-                <div v-else class="no-rank">No rank data</div>
+                <div class="rank-section">
+                  <div v-if="player.ranksLoading" class="rank-loading">
+                    Loading ranks...
+                  </div>
+                  <div v-else-if="player.highestRank" class="highest-rank">
+                    <span class="queue-type">{{ getQueueTypeLabel(player.highestRank.queueType) }}</span>
+                    <span class="rank-tier">{{ player.highestRank.tier }} {{ player.highestRank.rank }}</span>
+                    <span class="lp">{{ player.highestRank.leaguePoints }} LP</span>
+                  </div>
+                  <div v-else-if="player.ranksError" class="rank-error">
+                    {{ player.ranksError }}
+                  </div>
+                  <div v-else class="no-ranks">
+                    No rank data
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -177,14 +191,28 @@
             <div 
               v-for="player in team2" 
               :key="player.puuid"
-              class="team-player"
+              class="team-player-item"
             >
               <div class="player-info">
-                <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
-                <div v-if="player.highestRank" class="player-rank">
-                  {{ player.highestRank.tier }} {{ player.highestRank.rank }} ({{ player.highestRank.leaguePoints }} LP)
+                <div class="player-details">
+                  <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
                 </div>
-                <div v-else class="no-rank">No rank data</div>
+                <div class="rank-section">
+                  <div v-if="player.ranksLoading" class="rank-loading">
+                    Loading ranks...
+                  </div>
+                  <div v-else-if="player.highestRank" class="highest-rank">
+                    <span class="queue-type">{{ getQueueTypeLabel(player.highestRank.queueType) }}</span>
+                    <span class="rank-tier">{{ player.highestRank.tier }} {{ player.highestRank.rank }}</span>
+                    <span class="lp">{{ player.highestRank.leaguePoints }} LP</span>
+                  </div>
+                  <div v-else-if="player.ranksError" class="rank-error">
+                    {{ player.ranksError }}
+                  </div>
+                  <div v-else class="no-ranks">
+                    No rank data
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -720,17 +748,14 @@ const createTeamsAgain = () => {
 };
 
 const startNewLobby = () => {
-  // Reset all state
-  addedPlayers.value = [];
+  // Reset only team creation state, preserve players in waiting lobby
   team1.value = [];
   team2.value = [];
   isLobbyCreated.value = false;
   errorMessage.value = '';
-  gameNameQuery.value = '';
-  tagLineQuery.value = '';
   
-  // Load suggested players from localStorage
-  loadSuggestedPlayers();
+  // Don't clear addedPlayers - preserve them in the waiting lobby
+  // Don't clear search fields - keep them for convenience
 };
 
 // Load suggested players on component mount
@@ -1185,30 +1210,37 @@ h3 {
   gap: 0.5rem;
 }
 
-.team-player {
-  display: flex;
-  flex-direction: column;
+.team-player-item {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
+  padding: 0.8rem;
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  margin-bottom: 0.5rem;
 }
 
-.player-info {
-  text-align: center;
+.team-player-item .player-info {
+  display: contents;
 }
 
-.player-name {
+.team-player-item .player-details {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-self: start;
+}
+
+.team-player-item .player-name {
   font-weight: 500;
   color: #333;
 }
 
-.player-rank {
-  color: #28a745;
-  font-size: 0.8rem;
-}
-
-.no-rank {
-  color: #999;
-  font-size: 0.8rem;
-  font-style: italic;
+.team-player-item .rank-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .team-actions {
