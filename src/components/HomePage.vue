@@ -89,7 +89,17 @@
     </div>
 
     <div v-if="!isLobbyCreated" class="waiting-lobby" :class="{ 'lobby-full': addedPlayers.length >= 10 }">
-      <h3>Waiting Lobby ({{ addedPlayers.length }}/10)</h3>
+      <div class="lobby-header">
+        <h3>Waiting Lobby ({{ addedPlayers.length }}/10)</h3>
+        <button 
+          v-if="addedPlayers.length > 0"
+          @click="clearAllPlayers" 
+          class="clear-all-button"
+          :disabled="isLoading"
+        >
+          Clear All
+        </button>
+      </div>
       <div class="added-players">
         <div 
           v-for="player in addedPlayers" 
@@ -680,6 +690,12 @@ const removePlayer = (puuid) => {
   // The suggestions will be filtered automatically when they're displayed
 };
 
+const clearAllPlayers = () => {
+  addedPlayers.value = [];
+  // Re-analyze matches for suggestions when all players are removed
+  analyzeMatchesForSuggestions(false);
+};
+
 const createLobby = () => {
   console.log('Creating lobby with players:', addedPlayers.value);
   
@@ -839,7 +855,7 @@ loadSuggestedPlayers();
   flex-wrap: wrap;
   gap: 0.8rem;
   margin-top: 1rem;
-  justify-content: center;
+  justify-content: left;
 }
 
 .player-button {
@@ -886,6 +902,33 @@ loadSuggestedPlayers();
 
 .lobby-full h3 {
   color: #856404;
+}
+
+.lobby-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.clear-all-button {
+  padding: 0.5rem 1rem;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.3s;
+}
+
+.clear-all-button:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.clear-all-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 .added-players {
