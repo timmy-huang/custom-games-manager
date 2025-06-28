@@ -1,27 +1,112 @@
 export const SUBREGIONS = {
   // Americas
-  NA: { value: 'NA', label: 'North America' },
-  BR: { value: 'BR', label: 'Brazil' },
-  LAN: { value: 'LAN', label: 'Latin America North' },
-  LAS: { value: 'LAS', label: 'Latin America South' },
+  NA: {
+    value: 'NA',
+    label: 'North America',
+    regionalEndpoint: 'na1',
+    largeRegionalEndpoint: 'americas'
+  },
+  BR: {
+    value: 'BR',
+    label: 'Brazil',
+    regionalEndpoint: 'br1',
+    largeRegionalEndpoint: 'americas'
+  },
+  LAN: {
+    value: 'LAN',
+    label: 'Latin America North',
+    regionalEndpoint: 'la1',
+    largeRegionalEndpoint: 'americas'
+  },
+  LAS: {
+    value: 'LAS',
+    label: 'Latin America South',
+    regionalEndpoint: 'la2',
+    largeRegionalEndpoint: 'americas'
+  },
 
   // Asia
-  KR: { value: 'KR', label: 'Korea' },
-  JP: { value: 'JP', label: 'Japan' },
-  OCE: { value: 'OCE', label: 'Oceania' },
-  SEA: { value: 'SEA', label: 'South East Asia' },
-  TW: { value: 'TW', label: 'Taiwan' },
-  VN: { value: 'VN', label: 'Vietnam' },
+  KR: {
+    value: 'KR',
+    label: 'Korea',
+    regionalEndpoint: 'kr',
+    largeRegionalEndpoint: 'asia'
+  },
+  JP: {
+    value: 'JP',
+    label: 'Japan',
+    regionalEndpoint: 'jp1',
+    largeRegionalEndpoint: 'asia'
+  },
+  OCE: {
+    value: 'OCE',
+    label: 'Oceania',
+    regionalEndpoint: 'oc1',
+    largeRegionalEndpoint: 'sea'
+  },
+  SEA: {
+    value: 'SEA',
+    label: 'South East Asia',
+    regionalEndpoint: 'sg2',
+    largeRegionalEndpoint: 'sea'
+  },
+  TW: {
+    value: 'TW',
+    label: 'Taiwan',
+    regionalEndpoint: 'tw2',
+    largeRegionalEndpoint: 'sea'
+  },
+  VN: {
+    value: 'VN',
+    label: 'Vietnam',
+    regionalEndpoint: 'vn2',
+    largeRegionalEndpoint: 'sea'
+  },
 
   // Europe
-  EUW: { value: 'EUW', label: 'Europe West' },
-  EUNE: { value: 'EUNE', label: 'Europe Nordic & East' },
-  ME: { value: 'ME', label: 'Middle East' },
-  RU: { value: 'RU', label: 'Russia' },
-  TR: { value: 'TR', label: 'Turkey' },
+  EUW: {
+    value: 'EUW',
+    label: 'Europe West',
+    regionalEndpoint: 'euw1',
+    largeRegionalEndpoint: 'europe'
+  },
+  EUNE: {
+    value: 'EUNE',
+    label: 'Europe Nordic & East',
+    regionalEndpoint: 'eun1',
+    largeRegionalEndpoint: 'europe'
+  },
+  ME: {
+    value: 'ME',
+    label: 'Middle East',
+    regionalEndpoint: 'me1',
+    largeRegionalEndpoint: 'europe'
+  },
+  RU: {
+    value: 'RU',
+    label: 'Russia',
+    regionalEndpoint: 'ru',
+    largeRegionalEndpoint: 'europe'
+  },
+  TR: {
+    value: 'TR',
+    label: 'Turkey',
+    regionalEndpoint: 'tr1',
+    largeRegionalEndpoint: 'europe'
+  },
 };
 
-// Mapping of subregions to regional endpoints for rank API
+// Helper function to get regional endpoint for a subregion
+export const getRegionalEndpoint = (subregion) => {
+  return SUBREGIONS[subregion]?.regionalEndpoint || 'na1';
+};
+
+// Helper function to get large regional endpoint for a subregion
+export const getLargeRegionalEndpoint = (subregion) => {
+  return SUBREGIONS[subregion]?.largeRegionalEndpoint || 'americas';
+};
+
+// Legacy mappings for backward compatibility
 export const REGIONAL_ENDPOINTS = {
   // Americas
   NA: 'na1',
@@ -43,6 +128,15 @@ export const REGIONAL_ENDPOINTS = {
   ME: 'me1',
   RU: 'ru',
   TR: 'tr1',
+};
+
+// Legacy mappings for backward compatibility
+export const LARGE_REGIONAL_ENDPOINTS = {
+  // Americas
+  AMERICAS: ['NA', 'BR', 'LAN', 'LAS'],
+  ASIA: ['KR', 'JP'],
+  EUROPE: ['EUW', 'EUNE', 'ME', 'RU', 'TR'],
+  SEA: ['SEA', 'OCE', 'TW', 'VN'],
 };
 
 export const API_CONFIG = {

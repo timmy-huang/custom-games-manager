@@ -45,34 +45,51 @@
         <button 
           type="submit" 
           class="add-button"
-          :disabled="isLoading"
+          :disabled="isLoading || addedPlayers.length >= 10"
         >
           <span v-if="isLoading">Loading...</span>
+          <span v-else-if="addedPlayers.length >= 10">Lobby Full</span>
           <span v-else>Add Player</span>
         </button>
       </form>
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
     </div>
 
-    <div class="suggested-players">
-      <h3>Suggested Players</h3>
+    <div v-if="filteredSuggestedPlayers.length > 0" class="suggested-players">
+      <div class="suggestions-header">
+        <h3>Suggested Players</h3>
+        <div v-if="isAnalyzingMatches" class="analyzing-indicator">
+          <div class="small-spinner"></div>
+          <span>Updating...</span>
+        </div>
+      </div>
       <div class="players-row">
         <button 
-          v-for="player in suggestedPlayers" 
+          v-for="player in filteredSuggestedPlayers" 
           :key="player.gameName + player.tagLine"
           class="player-button"
           @click="addPlayer(player.gameName, player.tagLine, player.subregion)"
-          :disabled="isLoading"
+          :disabled="isLoading || addedPlayers.length >= 10"
         >
-          
           {{ player.gameName }}#{{ player.tagLine }}
           <span class="plus-sign">+</span>
         </button>
       </div>
     </div>
 
-    <div class="waiting-lobby">
-      <h3>Waiting Lobby</h3>
+    <div v-else-if="isAnalyzingMatches" class="analyzing-matches">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <p>Analyzing recent matches for teammate suggestions...</p>
+      </div>
+    </div>
+
+    <div v-else-if="addedPlayers.length > 0" class="no-suggestions">
+      <p>No teammates found in recent matches</p>
+    </div>
+
+    <div class="waiting-lobby" :class="{ 'lobby-full': addedPlayers.length >= 10 }">
+      <h3>Waiting Lobby ({{ addedPlayers.length }}/10)</h3>
       <div class="added-players">
         <div 
           v-for="player in addedPlayers" 
@@ -82,7 +99,7 @@
           <div class="player-info">
             <div class="player-details">
               <span class="player-name">{{ player.gameName }}#{{ player.tagLine }}</span>
-              <span class="region-tag">{{ player.subregion }}</span>
+              <!-- <span class="region-tag">{{ player.subregion }}</span> -->
             </div>
             <div class="rank-section">
               <div v-if="player.ranksLoading" class="rank-loading">
@@ -123,9 +140,9 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, computed } from 'vue';
 import { RiotApiService } from '../services/riotApi';
-import { SUBREGIONS, REGIONAL_ENDPOINTS } from '../config/api.config';
+import { SUBREGIONS, getRegionalEndpoint, getLargeRegionalEndpoint } from '../config/api.config';
 
 // Search form data
 const gameNameQuery = ref('');
@@ -137,18 +154,214 @@ const errorMessage = ref('');
 // Store for player data
 const addedPlayers = ref([]);
 
+// Suggested players from match analysis or localStorage
+const suggestedPlayers = ref([]);
+const isAnalyzingMatches = ref(false);
+
 // Convert SUBREGIONS object to array for v-for
 const subregionsList = Object.values(SUBREGIONS);
 
-// Mock suggested players with taglines
-const suggestedPlayers = ref([
-  { gameName: 'Faker', tagLine: 'KR1', subregion: 'KR' },
-  { gameName: 'Caps', tagLine: 'EUW', subregion: 'EUW' },
-  { gameName: 'Bjergsen', tagLine: 'NA1', subregion: 'NA' },
-  { gameName: 'halcyonhunter', tagLine: 'oc', subregion: 'OCE' },
-  { gameName: 'Jankos', tagLine: 'EUW', subregion: 'EUW' },
-  { gameName: 'CoreJJ', tagLine: 'NA1', subregion: 'NA' }
-]);
+// Computed property to filter suggested players in real-time
+const filteredSuggestedPlayers = computed(() => {
+  // Create a set of existing player keys for quick lookup (case-insensitive)
+  const existingPlayerKeys = new Set();
+  addedPlayers.value.forEach(player => {
+    existingPlayerKeys.add(`${player.gameName}#${player.tagLine}`.toLowerCase());
+  });
+  
+  // Filter out players who are already in the waiting lobby and limit to 10 for display
+  return suggestedPlayers.value
+    .filter(suggestion => !existingPlayerKeys.has(`${suggestion.gameName}#${suggestion.tagLine}`.toLowerCase()))
+    .slice(0, 5); // Only show up to 5 players at a time
+});
+
+// Load suggested players from localStorage
+const loadSuggestedPlayers = () => {
+  try {
+    const stored = localStorage.getItem('suggestedPlayers');
+    if (stored) {
+      suggestedPlayers.value = JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading suggested players:', error);
+    suggestedPlayers.value = [];
+  }
+};
+
+// Save suggested players to localStorage
+const saveSuggestedPlayers = () => {
+  try {
+    localStorage.setItem('suggestedPlayers', JSON.stringify(suggestedPlayers.value));
+  } catch (error) {
+    console.error('Error saving suggested players:', error);
+  }
+};
+
+// Add player to localStorage suggestions
+const addToLocalSuggestions = (gameName, tagLine, subregion) => {
+  const playerKey = `${gameName}#${tagLine}`.toLowerCase();
+  
+  // Check if player already exists in suggestions (case-insensitive)
+  const existingIndex = suggestedPlayers.value.findIndex(
+    p => `${p.gameName}#${p.tagLine}`.toLowerCase() === playerKey
+  );
+  
+  if (existingIndex === -1) {
+    // Add new player to suggestions
+    suggestedPlayers.value.unshift({
+      gameName,
+      tagLine,
+      subregion
+    });
+    
+    // Keep only the last 30 suggestions
+    if (suggestedPlayers.value.length > 30) {
+      suggestedPlayers.value = suggestedPlayers.value.slice(0, 30);
+    }
+    
+    saveSuggestedPlayers();
+  }
+};
+
+// Analyze matches to find suggested players (optimized version)
+const analyzeMatchesForSuggestions = async (newPlayerOnly = false) => {
+  console.log('Analyzing matches for suggestions', newPlayerOnly ? '(new player only)' : '(all players)');
+  
+  if (addedPlayers.value.length === 0) {
+    // If lobby is empty, load from localStorage
+    loadSuggestedPlayers();
+    return;
+  }
+
+  try {
+    isAnalyzingMatches.value = true;
+    const playerCounts = new Map(); // Map to track how many games each player appears in
+    
+    // Determine which players to analyze
+    const playersToAnalyze = newPlayerOnly 
+      ? addedPlayers.value.slice(-1) // Only analyze the most recently added player
+      : addedPlayers.value;
+    
+    console.log(`Analyzing ${playersToAnalyze.length} player(s)`);
+    
+    // Process players asynchronously with Promise.all for better performance
+    const analysisPromises = playersToAnalyze.map(async (player) => {
+      const region = getLargeRegionalEndpoint(player.subregion) || 'na1';
+      
+      try {
+        // Get recent match history for this player (reduced to 10 matches)
+        const matchIds = await RiotApiService.getMatchHistory(player.puuid, region, 0, 10);
+        
+        // Process matches in parallel for better performance
+        const matchPromises = matchIds.map(async (matchId) => {
+          try {
+            const matchDetails = await RiotApiService.getMatchDetails(matchId, region);
+            
+            if (matchDetails.info && matchDetails.info.participants) {
+              // Find the current player in this match
+              const currentPlayerParticipant = matchDetails.info.participants.find(
+                p => p.puuid === player.puuid
+              );
+              
+              if (currentPlayerParticipant) {
+                const currentPlayerTeamId = currentPlayerParticipant.teamId;
+                
+                // Find all teammates (same teamId) in this match
+                const teammates = matchDetails.info.participants.filter(
+                  p => p.teamId === currentPlayerTeamId && p.puuid !== player.puuid
+                );
+              
+                // Return teammates for this match
+                return teammates.map(teammate => ({
+                  gameName: teammate.riotIdGameName,
+                  tagLine: teammate.riotIdTagline,
+                  subregion: selectedSubregion.value
+                }));
+              }
+            }
+            return [];
+          } catch (matchError) {
+            console.error(`Error analyzing match ${matchId}:`, matchError);
+            return [];
+          }
+        });
+        
+        // Wait for all matches to be processed
+        const matchResults = await Promise.all(matchPromises);
+        
+        // Flatten and count teammates
+        const allTeammates = matchResults.flat();
+        for (const teammate of allTeammates) {
+          const teammateKey = `${teammate.gameName}#${teammate.tagLine}`;
+          const currentCount = playerCounts.get(teammateKey) || 0;
+          playerCounts.set(teammateKey, currentCount + 1);
+        }
+        
+      } catch (playerError) {
+        console.error(`Error analyzing matches for player ${player.gameName}:`, playerError);
+      }
+    });
+    
+    // Wait for all players to be analyzed
+    await Promise.all(analysisPromises);
+    
+    // Convert the map to an array and sort by frequency
+    const newSuggestions = Array.from(playerCounts.entries())
+      .map(([playerKey, count]) => {
+        const [gameName, tagLine] = playerKey.split('#');
+        return {
+          gameName,
+          tagLine,
+          count,
+          subregion: selectedSubregion.value
+        };
+      })
+      .sort((a, b) => b.count - a.count) // Sort by frequency (highest first)
+      .slice(0, 30); // Take top 30 suggestions instead of 10
+    
+    // If analyzing only new player, merge with existing suggestions
+    if (newPlayerOnly && suggestedPlayers.value.length > 0) {
+      // Create a map of existing suggestions for quick lookup
+      const existingSuggestionsMap = new Map();
+      suggestedPlayers.value.forEach(suggestion => {
+        const key = `${suggestion.gameName}#${suggestion.tagLine}`;
+        existingSuggestionsMap.set(key, suggestion);
+      });
+      
+      // Merge new suggestions with existing ones
+      newSuggestions.forEach(newSuggestion => {
+        const key = `${newSuggestion.gameName}#${newSuggestion.tagLine}`;
+        const existing = existingSuggestionsMap.get(key);
+        
+        if (existing) {
+          // Update count if this player appears more frequently
+          if (newSuggestion.count > existing.count) {
+            existingSuggestionsMap.set(key, newSuggestion);
+          }
+        } else {
+          // Add new suggestion
+          existingSuggestionsMap.set(key, newSuggestion);
+        }
+      });
+      
+      // Convert back to array and sort
+      suggestedPlayers.value = Array.from(existingSuggestionsMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 30);
+    } else {
+      // Replace all suggestions (already filtered above)
+      suggestedPlayers.value = newSuggestions;
+    }
+    
+  } catch (error) {
+    console.error('Error analyzing matches for suggestions:', error);
+    if (!newPlayerOnly) {
+      suggestedPlayers.value = [];
+    }
+  } finally {
+    isAnalyzingMatches.value = false;
+  }
+};
 
 // Helper function to get queue type labels
 const getQueueTypeLabel = (queueType) => {
@@ -235,7 +448,7 @@ const fetchPlayerRanks = async (player) => {
       };
     }
     
-    const region = REGIONAL_ENDPOINTS[player.subregion] || 'na1';
+    const region = getRegionalEndpoint(player.subregion) || 'na1';
     console.log(`Fetching ranks for ${player.gameName} in region: ${region}`);
     
     const ranks = await RiotApiService.getPlayerRanks(player.puuid, region);
@@ -285,7 +498,18 @@ const addPlayer = async (gameName, tagLine, subregion = selectedSubregion.value)
     isLoading.value = true;
     errorMessage.value = '';
     
+    // Update selectedSubregion if a specific subregion is provided (from suggested players)
+    if (subregion !== selectedSubregion.value) {
+      selectedSubregion.value = subregion;
+    }
+    
     const playerData = await RiotApiService.getAccountByRiotId(gameName, tagLine);
+    
+    // Check if lobby is full (max 10 players)
+    if (addedPlayers.value.length >= 10) {
+      errorMessage.value = 'Waiting lobby is full (maximum 10 players)';
+      return;
+    }
     
     // Check if player is already added
     if (!addedPlayers.value.some(p => p.puuid === playerData.puuid)) {
@@ -302,8 +526,14 @@ const addPlayer = async (gameName, tagLine, subregion = selectedSubregion.value)
       
       addedPlayers.value.push(newPlayer);
       
+      // Add to localStorage suggestions to maintain a larger pool
+      addToLocalSuggestions(gameName, tagLine, subregion);
+      
       // Fetch ranks for the new player
       fetchPlayerRanks(newPlayer);
+      
+      // Analyze matches for suggestions (incremental - only analyze new player)
+      analyzeMatchesForSuggestions(true);
     }
     
     // Clear search fields
@@ -329,12 +559,17 @@ const handleSearch = (event) => {
 
 const removePlayer = (puuid) => {
   addedPlayers.value = addedPlayers.value.filter(p => p.puuid !== puuid);
+  // Don't re-analyze matches when removing a player - keep existing suggestions
+  // The suggestions will be filtered automatically when they're displayed
 };
 
 const createLobby = () => {
   console.log('Creating lobby with players:', addedPlayers.value);
   // TODO: Implement lobby creation logic
 };
+
+// Load suggested players on component mount
+loadSuggestedPlayers();
 </script>
 
 <style scoped>
@@ -492,6 +727,16 @@ const createLobby = () => {
   padding: 1rem;
   background-color: #f9f9f9;
   border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.lobby-full {
+  background-color: #fff3cd;
+  border: 2px solid #ffc107;
+}
+
+.lobby-full h3 {
+  color: #856404;
 }
 
 .added-players {
@@ -639,5 +884,80 @@ button:disabled {
 h3 {
   color: #333;
   margin-bottom: 1rem;
+}
+
+.no-suggestions {
+  text-align: center;
+  margin: 2rem 0;
+  padding: 2rem;
+  color: #666;
+  font-style: italic;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  border: 1px dashed #ddd;
+}
+
+.game-count {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.analyzing-matches {
+  text-align: center;
+  margin: 2rem 0;
+  padding: 2rem;
+  color: #666;
+  font-style: italic;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  border: 1px dashed #ddd;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-subtitle {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.suggestions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.analyzing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.small-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 </style> 
