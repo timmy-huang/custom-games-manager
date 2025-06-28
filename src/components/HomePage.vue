@@ -918,6 +918,7 @@ loadSuggestedPlayers();
   background-color: #f9f9f9;
   border-radius: 8px;
   transition: all 0.3s ease;
+  width: 800px;
 }
 
 .lobby-full {
@@ -1023,6 +1024,7 @@ loadSuggestedPlayers();
   background-color: #f8f9fa;
   border-radius: 3px;
   border: 1px solid #e9ecef;
+  width: 200px;
 }
 
 .queue-type {
@@ -1181,8 +1183,9 @@ h3 {
 .teams-section {
   margin-top: 2rem;
   padding: 2rem;
-  background-color: #f9f9f9;
+  background-color: #f0f2f5;
   border-radius: 8px;
+  width: 1000px;
 }
 
 .teams-container {
@@ -1194,7 +1197,7 @@ h3 {
 .team {
   flex: 1;
   padding: 1rem;
-  background-color: white;
+  background-color: #f9f9f9;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
@@ -1212,13 +1215,14 @@ h3 {
 
 .team-player-item {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   padding: 0.8rem;
   background-color: white;
   border-radius: 6px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   margin-bottom: 0.5rem;
+  width: 100%;
 }
 
 .team-player-item .player-info {
@@ -1239,8 +1243,9 @@ h3 {
 
 .team-player-item .rank-section {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   align-items: center;
+  justify-self: end;
 }
 
 .team-actions {
